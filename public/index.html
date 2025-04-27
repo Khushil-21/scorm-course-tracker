@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xAPI/SCORM Course Uploader</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>xAPI/SCORM Course Uploader</h1>
+        </header>
+        
+        <main>
+            <!-- Existing Courses Section -->
+            <section id="existingCoursesSection" class="existing-courses-section">
+                <h2>Available Courses</h2>
+                <div id="coursesList" class="courses-list">
+                    <p class="loading-courses">Looking for existing courses...</p>
+                </div>
+            </section>
+            
+            <section class="upload-section">
+                <h2>Upload a SCORM, AICC, xAPI or cmi5 course</h2>
+                
+                <div class="upload-form">
+                    <form id="courseUploadForm">
+                        <div class="form-group">
+                            <label for="courseId">Course ID (optional):</label>
+                            <input type="text" id="courseId" name="courseId" placeholder="Leave blank for auto-generation">
+                            <p class="help-text">Course IDs must be unique. Using an existing course ID will create a new version.</p>
+                        </div>
+                        
+                        <div class="form-group file-upload">
+                            <label for="courseFile">Select Course Package:</label>
+                            <div class="custom-file-upload">
+                                <input type="file" id="courseFile" name="courseFile" accept=".zip">
+                                <label for="courseFile" class="file-label">Choose file</label>
+                                <span id="fileNameDisplay">No file chosen</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">Upload Course</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="requirements">
+                    <h3>Requirements</h3>
+                    <p>To import a course package, it needs to be zipped up (.zip) and needs to be either a SCORM, AICC, xAPI or cmi5 course package.</p>
+                    <ul>
+                        <li>A <strong>SCORM</strong> package needs to have an <code>imsmanifest.xml</code> file which describes the course and its content.</li>
+                        <li>A <strong>xAPI</strong> package needs to have a <code>tincan.xml</code> file and needs to send xAPI statements to a Learning Record Store.</li>
+                        <li>An <strong>AICC</strong> package needs to be zipped up with the 4 AICC descriptor files (AU, CRS, CST, &amp; DES).</li>
+                        <li>A <strong>cmi5</strong> package must include a <code>cmi5.xml</code> file which includes a list of assignable units (AU).</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <section id="launchSection" class="launch-section hidden">
+                <h2>Launch Course</h2>
+                <div class="course-info">
+                    <p>Course ID: <span id="displayCourseId"></span></p>
+                    <p>Course Type: <span id="displayCourseType"></span></p>
+                </div>
+                <div class="launch-actions">
+                    <button id="launchBtn" class="btn btn-success">Launch Course</button>
+                </div>
+            </section>
+        </main>
+        
+        <div id="overlay" class="overlay hidden">
+            <div class="spinner"></div>
+            <p class="loading-text">Processing course...</p>
+        </div>
+        
+        <div id="coursePlayer" class="course-player hidden">
+            <div class="player-header">
+                <h3 id="playerTitle">Course Player</h3>
+                <button id="closePlayer" class="btn btn-close">Close</button>
+            </div>
+            <div class="iframe-container">
+                <iframe id="courseFrame" src="" frameborder="0" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <script src="scripts.js"></script>
+</body>
+</html> 
