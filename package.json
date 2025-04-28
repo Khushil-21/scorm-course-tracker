@@ -2,10 +2,11 @@
   "name": "xapi-scorm-uploader",
   "version": "1.0.0",
   "description": "Upload and play xAPI and SCORM courses",
-  "main": "server.js",
+  "main": "api/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node api/server.js",
+    "dev": "nodemon api/server.js",
+    "vercel-build": "echo 'Building for Vercel...'"
   },
   "dependencies": {
     "adm-zip": "^0.5.10",
@@ -19,5 +20,8 @@
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
