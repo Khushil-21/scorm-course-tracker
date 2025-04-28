@@ -1,24 +1,26 @@
+// server.js
+// Main server file for xAPI/SCORM Course Uploader
+// This file sets up the Express server, handles uploads, extraction, course listing, and course launching.
+
+// Import required modules
 const express = require('express');
 const fileUpload = require('express-fileupload');
 const path = require('path');
 const fs = require('fs-extra');
 const AdmZip = require('adm-zip');
 const cors = require('cors');
-const session = require('express-session');
-const multer = require('multer');
-const extract = require('extract-zip');
-const url = require('url');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Create required directories at startup
+// Ensure required directories exist at startup
 fs.ensureDirSync(path.join(__dirname, 'uploads'));
 fs.ensureDirSync(path.join(__dirname, 'courses'));
 fs.ensureDirSync(path.join(__dirname, 'sandbox'));
 
-// Enhanced CORS middleware specifically for Articulate Storyline
+// --- CORS and Security Headers Middleware ---
+// Handles CORS for all requests and applies special headers for Articulate Storyline content
 app.use((req, res, next) => {
   console.log(`[CORS] Processing request for: ${req.path}`);
   
@@ -73,7 +75,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware
+// --- Express Middleware ---
+// Enable CORS, JSON parsing, URL encoding, and file uploads
 app.use(cors({
   origin: '*',
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -87,10 +90,11 @@ app.use(fileUpload({
   limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
 }));
 
-// Serve static files from public directory
+// Serve static files from the public directory
 app.use(express.static('public'));
 
-// Special middleware for Articulate Storyline courses
+// --- Special Middleware for Articulate Storyline Courses ---
+// Ensures correct MIME types for media files
 app.use('/courses', (req, res, next) => {
   // Make sure mp4 and media files are served with correct MIME types
   const filePath = req.path;
@@ -127,12 +131,14 @@ app.use('/courses', express.static('courses', {
   }
 }));
 
-// Home route - Main dashboard
+// --- ROUTES ---
+
+// Home route - serves the main dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Course launcher endpoint - Opens course in popup window
+// Course launcher endpoint - opens course in a popup window or new tab
 app.get('/launch/:courseId', (req, res) => {
   const courseId = req.params.courseId;
   const courseDir = path.join(__dirname, 'courses', courseId);
@@ -240,7 +246,7 @@ app.get('/launch/:courseId', (req, res) => {
   }
 });
 
-// xAPI endpoint to receive statements
+// xAPI endpoint to receive statements (stub for LRS integration)
 app.post('/xapi/:courseId', express.json({limit: '50mb'}), (req, res) => {
   const courseId = req.params.courseId;
   console.log(`[xAPI] Received statement for course ${courseId}:`, 
@@ -254,7 +260,7 @@ app.post('/xapi/:courseId', express.json({limit: '50mb'}), (req, res) => {
   });
 });
 
-// Course listing endpoint
+// Course listing endpoint - returns all available courses
 app.get('/api/courses', async (req, res) => {
   try {
     const coursesDir = path.join(__dirname, 'courses');
@@ -291,7 +297,7 @@ app.get('/api/courses', async (req, res) => {
   }
 });
 
-// Upload course endpoint
+// Upload course endpoint - handles file upload, extraction, and validation
 app.post('/api/upload', async (req, res) => {
   try {
     if (!req.files || Object.keys(req.files).length === 0) {
@@ -389,6 +395,24 @@ app.post('/api/upload', async (req, res) => {
     
     // If we still don't have a launch file, try to find any HTML file
     if (!launchFile) {
+      // Helper function to find files with a specific extension
+      const findFiles = async (dir, options) => {
+        const files = [];
+        const items = await fs.readdir(dir, { withFileTypes: true });
+        
+        for (const item of items) {
+          const fullPath = path.join(dir, item.name);
+          if (item.isDirectory()) {
+            const subFiles = await findFiles(fullPath, options);
+            files.push(...subFiles);
+          } else if (options.extension && item.name.endsWith(options.extension)) {
+            files.push(fullPath);
+          }
+        }
+        
+        return files;
+      };
+      
       const htmlFiles = await findFiles(courseDir, { extension: '.html' });
       if (htmlFiles.length > 0) {
         launchFile = path.relative(courseDir, htmlFiles[0]);
@@ -423,7 +447,7 @@ app.post('/api/upload', async (req, res) => {
   }
 });
 
-// Handle course content
+// Serve course content (HTML, media, etc.) with security and MIME type handling
 app.get('/courses/:id/*', async (req, res) => {
   try {
     const courseId = req.params.id;
@@ -634,8 +658,8 @@ app.get('/courses/:id/*', async (req, res) => {
   }
 });
 
-// Start server
+// Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Visit http://localhost:${PORT} to access the application`);
-}); 
+});

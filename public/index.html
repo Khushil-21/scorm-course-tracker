@@ -8,12 +8,13 @@
 </head>
 <body>
     <div class="container">
+        <!-- Header: App Title -->
         <header>
             <h1>xAPI/SCORM Course Uploader</h1>
         </header>
         
         <main>
-            <!-- Existing Courses Section -->
+            <!-- Courses Section: Displays all available courses as cards -->
             <section id="existingCoursesSection" class="courses-section">
                 <h2>Available Courses</h2>
                 <div id="coursesList" class="courses-grid">
@@ -21,6 +22,7 @@
                 </div>
             </section>
             
+            <!-- Upload Section: Upload a new course package -->
             <section class="upload-section">
                 <h2>Upload a SCORM, AICC, xAPI or cmi5 course</h2>
                 
@@ -47,6 +49,7 @@
                     </form>
                 </div>
                 
+                <!-- Requirements: Explains what each course type needs -->
                 <div class="requirements">
                     <h3>Requirements</h3>
                     <p>To import a course package, it needs to be zipped up (.zip) and needs to be either a SCORM, AICC, xAPI or cmi5 course package.</p>
@@ -59,6 +62,7 @@
                 </div>
             </section>
             
+            <!-- Launch Section: Shows info and launch button for the most recently uploaded course -->
             <section id="launchSection" class="launch-section hidden">
                 <h2>Launch Course</h2>
                 <div class="course-info">
@@ -71,12 +75,14 @@
             </section>
         </main>
         
+        <!-- Overlay: Shows a spinner and message while processing -->
         <div id="overlay" class="overlay hidden">
             <div class="spinner"></div>
             <p class="loading-text">Processing course...</p>
         </div>
     </div>
     
+    <!-- Main frontend logic -->
     <script src="scripts.js"></script>
 </body>
 </html> 

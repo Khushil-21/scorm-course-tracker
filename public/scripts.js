@@ -1,5 +1,8 @@
+// public/scripts.js
+// Handles all frontend logic for uploading, listing, and launching courses
+
 document.addEventListener('DOMContentLoaded', function() {
-    // DOM Elements
+    // --- DOM Elements ---
     const courseUploadForm = document.getElementById('courseUploadForm');
     const courseFileInput = document.getElementById('courseFile');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
@@ -9,18 +12,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const displayCourseId = document.getElementById('displayCourseId');
     const displayCourseType = document.getElementById('displayCourseType');
     const launchBtn = document.getElementById('launchBtn');
-    const coursePopup = document.getElementById('coursePopup');
-    const courseFrame = document.getElementById('courseFrame');
-    const closePopup = document.getElementById('closePopup');
-    const popupTitle = document.getElementById('popupTitle');
+    // Popup is now removed, so no popup DOM references
     
-    // Current course data
+    // Current course data (for launch section)
     let currentCourse = null;
     
     // Load existing courses on page load
     loadExistingCourses();
     
-    // File input change handler
+    // --- File input change handler ---
+    // Updates the file name display when a file is selected
     courseFileInput.addEventListener('change', function() {
         if (this.files.length > 0) {
             fileNameDisplay.textContent = this.files[0].name;
@@ -29,7 +30,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Form submission handler
+    // --- Form submission handler ---
+    // Handles course upload, shows overlay, and updates UI on success/error
     courseUploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
@@ -46,10 +48,10 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('courseId', courseId);
         }
         
-        // Show overlay
+        // Show overlay while uploading
         overlay.classList.remove('hidden');
         
-        // Upload the course
+        // Upload the course via API
         fetch('/api/upload', {
             method: 'POST',
             body: formData
@@ -91,35 +93,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Launch button click handler
+    // --- Launch button click handler ---
+    // Opens the course in a new window and removes any popup remnants
     launchBtn.addEventListener('click', function() {
         if (currentCourse) {
-            // Open the course in a new window
             window.open(currentCourse.launchUrl, '_blank', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
-            // Remove the popup from the DOM if it exists
-            if (coursePopup) {
-                coursePopup.remove();
-            }
         }
     });
     
-    // Close popup button click handler
-    closePopup.addEventListener('click', function() {
-        if (coursePopup) {
-            coursePopup.remove();
-        }
-    });
-    
-    // Close popup when clicking outside the content
-    coursePopup.addEventListener('click', function(e) {
-        if (e.target === coursePopup) {
-            if (coursePopup) {
-                coursePopup.remove();
-            }
-        }
-    });
-    
-    // Function to load existing courses
+    // --- Load existing courses and display as cards ---
     function loadExistingCourses() {
         coursesList.innerHTML = '<p class="loading-courses">Loading courses...</p>';
         
@@ -130,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     coursesList.innerHTML = '<p class="no-courses">No courses available. Upload a course to get started.</p>';
                     return;
                 }
-                
+                // Render each course as a card with launch button
                 const coursesHTML = courses.map(course => `
                     <div class="course-card">
                         <div class="course-info">
@@ -145,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 coursesList.innerHTML = coursesHTML;
                 
-                // Add event listeners to launch buttons
+                // Add event listeners to launch buttons for each course card
                 document.querySelectorAll('.launch-course').forEach(button => {
                     button.addEventListener('click', function() {
                         const courseId = this.getAttribute('data-course-id');
@@ -158,10 +140,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         };
                         // Open the course in a new window
                         window.open(launchUrl, '_blank', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
-                        // Remove the popup from the DOM if it exists
-                        if (coursePopup) {
-                            coursePopup.remove();
-                        }
                     });
                 });
             })
@@ -171,13 +149,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
-    // Function to display course info in launch section
+    // --- Display course info in launch section ---
     function displayCourseInfo(course) {
         displayCourseId.textContent = course.id;
         displayCourseType.textContent = course.type;
         launchSection.classList.remove('hidden');
-        
-        // Scroll to launch section
+        // Scroll to launch section for user convenience
         launchSection.scrollIntoView({ behavior: 'smooth' });
     }
 }); 

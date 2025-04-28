@@ -1,4 +1,6 @@
-/* Reset and base styles */
+/* public/styles.css */
+
+/* --- Reset and Base Styles --- */
 * {
     margin: 0;
     padding: 0;
@@ -18,7 +20,7 @@ body {
     padding: 2rem;
 }
 
-/* Header styles */
+/* --- Header Styles --- */
 header {
     background-color: #fff;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -39,7 +41,7 @@ header p {
     font-size: 1.1rem;
 }
 
-/* Form styles */
+/* --- Upload Section Styles --- */
 .upload-section {
     background-color: #fff;
     border-radius: 12px;
@@ -88,6 +90,7 @@ input[type="file"]:focus {
     outline: none;
 }
 
+/* --- Custom File Input Styles --- */
 .file-input-wrapper {
     position: relative;
     overflow: hidden;
@@ -124,7 +127,7 @@ input[type="file"]:focus {
     font-size: 0.98rem;
 }
 
-/* Button styles */
+/* --- Button Styles --- */
 .btn {
     display: inline-block;
     padding: 0.9rem 1.7rem;
@@ -164,6 +167,7 @@ input[type="file"]:focus {
     margin-top: 0.2rem;
 }
 
+/* --- Requirements Box Styles --- */
 .requirements {
     background: #f8fafc;
     border-radius: 8px;
@@ -197,7 +201,7 @@ code {
     font-size: 0.97rem;
 }
 
-/* Course list styles */
+/* --- Courses Grid and Card Styles --- */
 .courses-section {
     background-color: #fff;
     border-radius: 12px;
@@ -261,7 +265,7 @@ code {
     justify-content: flex-end;
 }
 
-/* Launch section styles */
+/* --- Launch Section Styles --- */
 .launch-section {
     background-color: #fff;
     border-radius: 12px;
@@ -294,7 +298,7 @@ code {
     justify-content: flex-end;
 }
 
-/* Loading overlay */
+/* --- Overlay Styles (Loading Spinner) --- */
 .overlay {
     position: fixed;
     top: 0;
@@ -326,11 +330,6 @@ code {
     100% { transform: rotate(360deg); }
 }
 
-/* Utility classes */
-.hidden {
-    display: none !important;
-}
-
 .loading-courses,
 .no-courses,
 .error-message {
@@ -343,7 +342,7 @@ code {
     color: #e74c3c;
 }
 
-/* Responsive styles */
+/* --- Responsive Styles --- */
 @media (max-width: 900px) {
     .container {
         padding: 0.7rem;
