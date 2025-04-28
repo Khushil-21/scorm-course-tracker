@@ -14,9 +14,9 @@
         
         <main>
             <!-- Existing Courses Section -->
-            <section id="existingCoursesSection" class="existing-courses-section">
+            <section id="existingCoursesSection" class="courses-section">
                 <h2>Available Courses</h2>
-                <div id="coursesList" class="courses-list">
+                <div id="coursesList" class="courses-grid">
                     <p class="loading-courses">Looking for existing courses...</p>
                 </div>
             </section>
@@ -34,10 +34,10 @@
                         
                         <div class="form-group file-upload">
                             <label for="courseFile">Select Course Package:</label>
-                            <div class="custom-file-upload">
+                            <div class="file-input-wrapper">
                                 <input type="file" id="courseFile" name="courseFile" accept=".zip">
-                                <label for="courseFile" class="file-label">Choose file</label>
-                                <span id="fileNameDisplay">No file chosen</span>
+                                <label for="courseFile" class="file-input-button">Choose file</label>
+                                <span id="fileNameDisplay" class="file-name">No file chosen</span>
                             </div>
                         </div>
                         
@@ -74,16 +74,6 @@
         <div id="overlay" class="overlay hidden">
             <div class="spinner"></div>
             <p class="loading-text">Processing course...</p>
-        </div>
-        
-        <div id="coursePlayer" class="course-player hidden">
-            <div class="player-header">
-                <h3 id="playerTitle">Course Player</h3>
-                <button id="closePlayer" class="btn btn-close">Close</button>
-            </div>
-            <div class="iframe-container">
-                <iframe id="courseFrame" src="" frameborder="0" allowfullscreen></iframe>
-            </div>
         </div>
     </div>
     

@@ -1,220 +1,183 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Elements
+document.addEventListener('DOMContentLoaded', function() {
+    // DOM Elements
     const courseUploadForm = document.getElementById('courseUploadForm');
     const courseFileInput = document.getElementById('courseFile');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const coursesList = document.getElementById('coursesList');
     const overlay = document.getElementById('overlay');
     const launchSection = document.getElementById('launchSection');
     const displayCourseId = document.getElementById('displayCourseId');
     const displayCourseType = document.getElementById('displayCourseType');
     const launchBtn = document.getElementById('launchBtn');
-    const coursePlayer = document.getElementById('coursePlayer');
+    const coursePopup = document.getElementById('coursePopup');
     const courseFrame = document.getElementById('courseFrame');
-    const closePlayer = document.getElementById('closePlayer');
-    const playerTitle = document.getElementById('playerTitle');
-    const coursesList = document.getElementById('coursesList');
-
-    // Variables to store course data
-    let currentCourse = {
-        courseId: '',
-        launchUrl: '',
-        type: ''
-    };
-
-    // Display selected filename
-    courseFileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            fileNameDisplay.textContent = e.target.files[0].name;
+    const closePopup = document.getElementById('closePopup');
+    const popupTitle = document.getElementById('popupTitle');
+    
+    // Current course data
+    let currentCourse = null;
+    
+    // Load existing courses on page load
+    loadExistingCourses();
+    
+    // File input change handler
+    courseFileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            fileNameDisplay.textContent = this.files[0].name;
         } else {
             fileNameDisplay.textContent = 'No file chosen';
         }
     });
-
-    // Handle form submission
-    courseUploadForm.addEventListener('submit', async (e) => {
+    
+    // Form submission handler
+    courseUploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        // Validate file input
         if (!courseFileInput.files.length) {
-            alert('Please select a file to upload.');
+            alert('Please select a course file to upload');
             return;
         }
         
-        // Check if the file is a zip
-        const fileName = courseFileInput.files[0].name;
-        if (!fileName.endsWith('.zip')) {
-            alert('Please upload a zip file.');
-            return;
-        }
-        
-        // Show loading overlay
-        overlay.classList.remove('hidden');
-        
-        // Create form data
         const formData = new FormData();
         formData.append('courseFile', courseFileInput.files[0]);
         
-        // Add course ID if provided
-        const courseIdInput = document.getElementById('courseId');
-        if (courseIdInput.value.trim()) {
-            formData.append('courseId', courseIdInput.value.trim());
+        const courseId = document.getElementById('courseId').value.trim();
+        if (courseId) {
+            formData.append('courseId', courseId);
         }
         
-        try {
-            // Send the upload request
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                throw new Error(data.error || 'Upload failed');
-            }
-            
-            // Store course data
-            currentCourse = {
-                courseId: data.courseId,
-                launchUrl: data.launchUrl,
-                type: data.type
-            };
-            
-            // Update the launch section
-            displayCourseId.textContent = data.courseId;
-            displayCourseType.textContent = data.type;
-            
-            // Show launch section
-            launchSection.classList.remove('hidden');
-            
-            // Scroll to launch section
-            launchSection.scrollIntoView({ behavior: 'smooth' });
-            
-            // Refresh the course list
-            checkExistingCourses();
-            
-        } catch (error) {
-            console.error('Upload error:', error);
-            alert('Error: ' + error.message);
-        } finally {
-            // Hide loading overlay
+        // Show overlay
+        overlay.classList.remove('hidden');
+        
+        // Upload the course
+        fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide overlay
             overlay.classList.add('hidden');
-        }
-    });
-    
-    // Launch course button handler 
-    launchBtn.addEventListener('click', () => {
-        if (currentCourse.courseId) {
-            // Option 1: Use the direct launch URL received from the server
-            launchCourse(currentCourse.launchUrl);
             
-            // Option 2: Use the dedicated launch route (safer option)
-            // launchCourse(`/launch/${currentCourse.courseId}`);
-        }
-    });
-    
-    // Function to launch the course
-    function launchCourse(url) {
-
-        // Open in a new tab instead of iframe
-        window.open(url, '_blank');
-
-        // Update iframe and course player
-        courseFrame.src = url;
-        
-        // Set the course title if we have current course info
-        if (currentCourse.courseId) {
-            playerTitle.textContent = `${currentCourse.type} Course: ${currentCourse.courseId}`;
-        }
-        
-        coursePlayer.classList.remove('hidden');
-        
-        // For debugging - try to detect if iframe content didn't load correctly
-        courseFrame.addEventListener('load', () => {
-            console.log('Course iframe loaded:', url);
-            
-            // Check if we got a 404 page or other error
-            try {
-                // This will throw an error if cross-origin, which is expected
-                // and we can ignore that error
-                const frameContent = courseFrame.contentDocument || courseFrame.contentWindow.document;
-                console.log('Frame content available:', frameContent.title);
-            } catch (e) {
-                console.log('Frame is cross-origin, which is normal for course content');
-            }
-        });
-        
-        courseFrame.addEventListener('error', (e) => {
-            console.error('Error loading course iframe:', e);
-        });
-    }
-    
-    // Close player
-    closePlayer.addEventListener('click', () => {
-        coursePlayer.classList.add('hidden');
-        // Clear the iframe src to stop any running content
-        courseFrame.src = '';
-    });
-    
-    // Check if any courses are already uploaded and provide direct launch buttons
-    async function checkExistingCourses() {
-        try {
-            const response = await fetch('/api/courses');
-            if (!response.ok) {
-                throw new Error('Failed to load courses');
-            }
-            
-            const courses = await response.json();
-            
-            // Clear the courses list
-            coursesList.innerHTML = '';
-            
-            if (courses && courses.length > 0) {
-                console.log('Existing courses:', courses);
+            if (data.success) {
+                // Show success message
+                alert(`Course uploaded successfully! Course ID: ${data.courseId}`);
                 
-                // Create a card for each course
-                courses.forEach(course => {
-                    const courseCard = document.createElement('div');
-                    courseCard.className = 'course-card';
-                    
-                    const courseTitle = document.createElement('div');
-                    courseTitle.className = 'course-title';
-                    courseTitle.textContent = course.id;
-                    
-                    const courseType = document.createElement('div');
-                    courseType.className = 'course-type';
-                    courseType.textContent = course.type;
-                    
-                    const launchButton = document.createElement('button');
-                    launchButton.className = 'btn btn-success';
-                    launchButton.textContent = 'Launch';
-                    launchButton.addEventListener('click', () => {
-                        // Update current course
-                        currentCourse = {
-                            courseId: course.id,
-                            type: course.type,
-                            launchUrl: course.launchUrl
-                        };
-                        
-                        // Launch the course
-                        launchCourse(course.launchUrl);
-                    });
-                    
-                    courseCard.appendChild(courseTitle);
-                    courseCard.appendChild(courseType);
-                    courseCard.appendChild(launchButton);
-                    
-                    coursesList.appendChild(courseCard);
-                });
+                // Reset form
+                courseUploadForm.reset();
+                fileNameDisplay.textContent = 'No file chosen';
+                
+                // Reload courses list
+                loadExistingCourses();
+                
+                // Show launch section with course info
+                currentCourse = {
+                    id: data.courseId,
+                    type: data.type,
+                    launchUrl: data.launchUrl
+                };
+                
+                displayCourseInfo(currentCourse);
             } else {
-                coursesList.innerHTML = '<p>No courses available. Upload a course package to get started.</p>';
+                alert(`Error: ${data.error}`);
             }
-        } catch (error) {
-            console.log('Error loading courses:', error);
-            coursesList.innerHTML = '<p>Error loading courses. Try refreshing the page.</p>';
+        })
+        .catch(error => {
+            // Hide overlay
+            overlay.classList.add('hidden');
+            
+            console.error('Error:', error);
+            alert('An error occurred while uploading the course. Please try again.');
+        });
+    });
+    
+    // Launch button click handler
+    launchBtn.addEventListener('click', function() {
+        if (currentCourse) {
+            // Open the course in a new window
+            window.open(currentCourse.launchUrl, '_blank', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
+            // Remove the popup from the DOM if it exists
+            if (coursePopup) {
+                coursePopup.remove();
+            }
         }
+    });
+    
+    // Close popup button click handler
+    closePopup.addEventListener('click', function() {
+        if (coursePopup) {
+            coursePopup.remove();
+        }
+    });
+    
+    // Close popup when clicking outside the content
+    coursePopup.addEventListener('click', function(e) {
+        if (e.target === coursePopup) {
+            if (coursePopup) {
+                coursePopup.remove();
+            }
+        }
+    });
+    
+    // Function to load existing courses
+    function loadExistingCourses() {
+        coursesList.innerHTML = '<p class="loading-courses">Loading courses...</p>';
+        
+        fetch('/api/courses')
+            .then(response => response.json())
+            .then(courses => {
+                if (courses.length === 0) {
+                    coursesList.innerHTML = '<p class="no-courses">No courses available. Upload a course to get started.</p>';
+                    return;
+                }
+                
+                const coursesHTML = courses.map(course => `
+                    <div class="course-card">
+                        <div class="course-info">
+                            <h3>${course.id}</h3>
+                            <p class="course-type">${course.type}</p>
+                        </div>
+                        <div class="course-actions">
+                            <button class="btn btn-primary launch-course" data-course-id="${course.id}" data-course-type="${course.type}" data-launch-url="${course.launchUrl}">Launch</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                coursesList.innerHTML = coursesHTML;
+                
+                // Add event listeners to launch buttons
+                document.querySelectorAll('.launch-course').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const courseId = this.getAttribute('data-course-id');
+                        const courseType = this.getAttribute('data-course-type');
+                        const launchUrl = this.getAttribute('data-launch-url');
+                        currentCourse = {
+                            id: courseId,
+                            type: courseType,
+                            launchUrl: launchUrl
+                        };
+                        // Open the course in a new window
+                        window.open(launchUrl, '_blank', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
+                        // Remove the popup from the DOM if it exists
+                        if (coursePopup) {
+                            coursePopup.remove();
+                        }
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error loading courses:', error);
+                coursesList.innerHTML = '<p class="error-message">Error loading courses. Please try again later.</p>';
+            });
     }
     
-    // Load existing courses when the page loads
-    checkExistingCourses();
+    // Function to display course info in launch section
+    function displayCourseInfo(course) {
+        displayCourseId.textContent = course.id;
+        displayCourseType.textContent = course.type;
+        launchSection.classList.remove('hidden');
+        
+        // Scroll to launch section
+        launchSection.scrollIntoView({ behavior: 'smooth' });
+    }
 }); 
