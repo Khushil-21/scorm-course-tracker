@@ -115,6 +115,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to launch the course
     function launchCourse(url) {
+
+        // Open in a new tab instead of iframe
+        window.open(url, '_blank');
+
         // Update iframe and course player
         courseFrame.src = url;
         

@@ -4,6 +4,11 @@ const path = require('path');
 const fs = require('fs-extra');
 const AdmZip = require('adm-zip');
 const cors = require('cors');
+const session = require('express-session');
+const multer = require('multer');
+const extract = require('extract-zip');
+const url = require('url');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,9 +16,70 @@ const PORT = process.env.PORT || 3000;
 // Create required directories at startup
 fs.ensureDirSync(path.join(__dirname, 'uploads'));
 fs.ensureDirSync(path.join(__dirname, 'courses'));
+fs.ensureDirSync(path.join(__dirname, 'sandbox'));
+
+// Enhanced CORS middleware specifically for Articulate Storyline
+app.use((req, res, next) => {
+  console.log(`[CORS] Processing request for: ${req.path}`);
+  
+  // Set standard CORS headers for all requests
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Detect if this is Articulate Storyline content
+  const isStorylineContent = req.path.includes('/story_content/') || 
+                            req.path.includes('/mobile/') || 
+                            req.path.endsWith('story.html') || 
+                            req.path.endsWith('story_html5.html');
+                            
+  const isMediaFile = /\.(mp4|webm|mp3|wav|ogg|ogv|m4v|flv|f4v)$/i.test(req.path);
+  
+  // Set special headers for Articulate Storyline content
+  if (isStorylineContent) {
+    console.log(`[CORS] Applying Articulate Storyline specific headers for: ${req.path}`);
+    
+    // Security headers for improved cross-origin content loading
+    res.header('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    
+    // Permissive CSP for Storyline content
+    res.header('Content-Security-Policy', 
+      "default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+      "script-src * 'self' 'unsafe-inline' 'unsafe-eval'; " +
+      "connect-src * 'self'; " +
+      "img-src * data: blob: 'self'; " +
+      "frame-src *; " +
+      "style-src * 'self' 'unsafe-inline'; " +
+      "font-src * 'self'; " +
+      "media-src * blob: 'self';"
+    );
+  }
+  
+  // Add cache control headers for media files for better playback performance
+  if (isMediaFile) {
+    console.log(`[CORS] Setting cache headers for media file: ${req.path}`);
+    res.header('Cache-Control', 'public, max-age=86400'); // 1 day cache
+  }
+
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    console.log(`[CORS] Handling OPTIONS preflight request for: ${req.path}`);
+    return res.status(200).end();
+  }
+
+  next();
+});
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  credentials: true,
+  optionsSuccessStatus: 204
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload({
@@ -24,15 +90,49 @@ app.use(fileUpload({
 // Serve static files from public directory
 app.use(express.static('public'));
 
-// Serve extracted course files
-app.use('/courses', express.static('courses'));
+// Special middleware for Articulate Storyline courses
+app.use('/courses', (req, res, next) => {
+  // Make sure mp4 and media files are served with correct MIME types
+  const filePath = req.path;
+  
+  if (filePath.endsWith('.mp4')) {
+    res.setHeader('Content-Type', 'video/mp4');
+  } else if (filePath.endsWith('.mp3')) {
+    res.setHeader('Content-Type', 'audio/mpeg');
+  } else if (filePath.endsWith('.webm')) {
+    res.setHeader('Content-Type', 'video/webm');
+  } else if (filePath.endsWith('.ogg')) {
+    res.setHeader('Content-Type', 'audio/ogg');
+  }
+  
+  // Let the static middleware handle the actual file serving
+  next();
+});
 
-// Home route
+// Serve extracted course files with proper MIME types
+app.use('/courses', express.static('courses', {
+  setHeaders: (res, filePath) => {
+    // Set additional headers for specific file types
+    if (filePath.endsWith('.mp4')) {
+      res.setHeader('Content-Type', 'video/mp4');
+    } else if (filePath.endsWith('.mp3')) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+    } else if (filePath.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    } else if (filePath.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    } else if (filePath.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
+
+// Home route - Main dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Direct launch route for a specific course
+// Course launcher endpoint - Opens course in popup window
 app.get('/launch/:courseId', (req, res) => {
   const courseId = req.params.courseId;
   const courseDir = path.join(__dirname, 'courses', courseId);
@@ -54,7 +154,65 @@ app.get('/launch/:courseId', (req, res) => {
         
         // Check if the launch file exists
         if (fs.existsSync(path.join(courseDir, launchFile))) {
-          return res.redirect(`/courses/${courseId}/${launchFile}`);
+          // Generate xAPI parameters
+          const xapiParams = {
+            actor: JSON.stringify({
+              "name": ["SCORM Player User"],
+              "account": [{
+                "accountServiceHomePage": "http://localhost:" + PORT,
+                "accountName": "scorm-player-user"
+              }],
+              "objectType": "Agent"
+            }),
+            endpoint: `http://localhost:${PORT}/xapi/${courseId}`,
+            auth: `Basic ${Buffer.from(':' + crypto.randomBytes(16).toString('hex')).toString('base64')}`,
+            content_token: crypto.randomBytes(16).toString('hex'),
+            activity_id: `http://${courseId}`,
+            registration: crypto.randomUUID().replace(/-/g, '')
+          };
+          
+          const xapiQuery = new URLSearchParams(xapiParams).toString();
+          const launchUrl = `/courses/${courseId}/${launchFile}?${xapiQuery}`;
+          
+          // Return HTML that opens the course in a popup window
+          return res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Launching Course</title>
+              <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+                .launching { margin: 20px; }
+                .spinner { 
+                  width: 40px; 
+                  height: 40px; 
+                  border: 4px solid #f3f3f3; 
+                  border-top: 4px solid #3498db; 
+                  border-radius: 50%; 
+                  animation: spin 1s linear infinite; 
+                  margin: 20px auto;
+                }
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="launching">
+                <h2>Launching Course...</h2>
+                <div class="spinner"></div>
+                <p>If the course doesn't open automatically, <a href="${launchUrl}" target="_blank">click here</a></p>
+              </div>
+              <script>
+                window.onload = function() {
+                  window.open('${launchUrl}', 'courseWindow', 
+                    'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
+                }
+              </script>
+            </body>
+            </html>
+          `);
         }
       }
     }
@@ -82,92 +240,59 @@ app.get('/launch/:courseId', (req, res) => {
   }
 });
 
-// Debug route to check course files
-app.get('/debug/courses/:courseId', async (req, res) => {
+// xAPI endpoint to receive statements
+app.post('/xapi/:courseId', express.json({limit: '50mb'}), (req, res) => {
   const courseId = req.params.courseId;
-  const courseDir = path.join(__dirname, 'courses', courseId);
+  console.log(`[xAPI] Received statement for course ${courseId}:`, 
+    req.body.verb ? req.body.verb.display : 'No verb');
   
-  if (!fs.existsSync(courseDir)) {
-    return res.status(404).json({ error: 'Course directory not found' });
-  }
-  
+  // In a real implementation, you would store these statements
+  // For now, just acknowledge receipt
+  res.status(200).json({
+    success: true,
+    message: 'Statement received'
+  });
+});
+
+// Course listing endpoint
+app.get('/api/courses', async (req, res) => {
   try {
-    // Get all files recursively
-    const getFilesRecursively = async (dir) => {
-      const dirents = await fs.readdir(dir, { withFileTypes: true });
-      const files = await Promise.all(dirents.map((dirent) => {
-        const res = path.join(dir, dirent.name);
-        return dirent.isDirectory() ? getFilesRecursively(res) : res;
-      }));
-      return Array.prototype.concat(...files);
-    };
+    const coursesDir = path.join(__dirname, 'courses');
+    await fs.ensureDir(coursesDir);
     
-    const allFiles = await getFilesRecursively(courseDir);
-    const relativeFiles = allFiles.map(file => path.relative(courseDir, file));
+    const items = await fs.readdir(coursesDir, { withFileTypes: true });
+    const courses = items
+      .filter(item => item.isDirectory())
+      .map(dir => {
+        const courseId = dir.name;
+        const courseDir = path.join(coursesDir, courseId);
+        
+        // Determine course type
+        let type = 'Unknown';
+        if (fs.existsSync(path.join(courseDir, 'tincan.xml'))) {
+          type = 'xAPI';
+        } else if (fs.existsSync(path.join(courseDir, 'imsmanifest.xml'))) {
+          type = 'SCORM';
+        } else if (fs.existsSync(path.join(courseDir, 'cmi5.xml'))) {
+          type = 'cmi5';
+        }
+        
+        return {
+          id: courseId,
+          type: type,
+          launchUrl: `/launch/${courseId}`
+        };
+      });
     
-    // Check for specific file types
-    const htmlFiles = relativeFiles.filter(file => file.endsWith('.html'));
-    const xmlFiles = relativeFiles.filter(file => file.endsWith('.xml'));
-    
-    // Check tincan.xml if it exists
-    let launchFile = null;
-    const tincanPath = path.join(courseDir, 'tincan.xml');
-    if (fs.existsSync(tincanPath)) {
-      const tincanContent = fs.readFileSync(tincanPath, 'utf8');
-      const launchMatch = tincanContent.match(/<launch.*?>(.+?)<\/launch>/);
-      if (launchMatch && launchMatch[1]) {
-        launchFile = launchMatch[1].trim();
-      }
-    }
-    
-    return res.json({ 
-      courseId, 
-      exists: true,
-      rootFiles: fs.readdirSync(courseDir),
-      htmlFiles,
-      xmlFiles,
-      launchFile,
-      allFiles: relativeFiles
-    });
+    res.json(courses);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    console.error('Error listing courses:', error);
+    res.status(500).json({ error: 'Failed to list courses' });
   }
 });
 
-// Recursive function to find files by name or extension
-async function findFiles(dir, options = {}) {
-  const { extension, name, recursive = true } = options;
-  const results = [];
-  
-  try {
-    const items = await fs.readdir(dir, { withFileTypes: true });
-    
-    for (const item of items) {
-      const itemPath = path.join(dir, item.name);
-      
-      if (item.isFile()) {
-        const fileName = item.name;
-        const fileExt = path.extname(fileName).toLowerCase();
-        
-        if ((extension && fileExt === extension) || 
-            (name && fileName === name)) {
-          results.push(itemPath);
-        }
-      } else if (item.isDirectory() && recursive) {
-        const subResults = await findFiles(itemPath, options);
-        results.push(...subResults);
-      }
-    }
-    
-    return results;
-  } catch (error) {
-    console.error(`Error searching directory ${dir}:`, error);
-    return results;
-  }
-}
-
-// Upload course route
-app.post('/upload', async (req, res) => {
+// Upload course endpoint
+app.post('/api/upload', async (req, res) => {
   try {
     if (!req.files || Object.keys(req.files).length === 0) {
       return res.status(400).json({ error: 'No files were uploaded.' });
@@ -280,7 +405,7 @@ app.post('/upload', async (req, res) => {
     }
     
     // Construct the final launch URL (ensuring proper path separators)
-    const launchUrl = `/courses/${courseId}/${launchFile.replace(/\\/g, '/')}`;
+    const launchUrl = `/launch/${courseId}`;
     console.log(`Final launch URL: ${launchUrl}`);
     
     return res.json({
@@ -298,40 +423,214 @@ app.post('/upload', async (req, res) => {
   }
 });
 
-// API endpoint to list available courses
-app.get('/api/courses', async (req, res) => {
+// Handle course content
+app.get('/courses/:id/*', async (req, res) => {
   try {
-    const coursesDir = path.join(__dirname, 'courses');
-    await fs.ensureDir(coursesDir);
+    const courseId = req.params.id;
+    // Use path.normalize to prevent directory traversal attacks
+    const relativePath = path.normalize(req.params[0] || '');
+    const absolutePath = path.join(__dirname, 'courses', courseId, relativePath);
     
-    const items = await fs.readdir(coursesDir, { withFileTypes: true });
-    const courses = items
-      .filter(item => item.isDirectory())
-      .map(dir => {
-        const courseId = dir.name;
-        const courseDir = path.join(coursesDir, courseId);
+    console.log(`[CourseContent] Serving: ${absolutePath}`);
+    console.log(`[CourseContent] User-Agent: ${req.headers['user-agent']}`);
+    
+    // Basic security check to prevent directory traversal
+    const normalizedCoursePath = path.normalize(path.join(__dirname, 'courses', courseId));
+    if (!absolutePath.startsWith(normalizedCoursePath)) {
+      console.error(`[Security] Attempted directory traversal: ${absolutePath}`);
+      return res.status(403).send('Forbidden');
+    }
+
+    // Check if file exists
+    try {
+      await fs.access(absolutePath);
+    } catch (err) {
+      console.error(`[Error] File not found: ${absolutePath}`);
+      return res.status(404).send('File not found');
+    }
+
+    // Get file stats
+    const stats = await fs.stat(absolutePath);
+    
+    // Detect if this is a directory request
+    if (stats.isDirectory()) {
+      // Redirect to index file if it exists
+      const indexPath = path.join(absolutePath, 'index.html');
+      try {
+        await fs.access(indexPath);
+        return res.redirect(`/courses/${courseId}/${relativePath}/index.html`);
+      } catch (err) {
+        // Try story.html
+        const storyPath = path.join(absolutePath, 'story.html');
+        try {
+          await fs.access(storyPath);
+          return res.redirect(`/courses/${courseId}/${relativePath}/story.html`);
+        } catch (err) {
+          // No index found
+          return res.status(404).send('Directory index not found');
+        }
+      }
+    }
+
+    // Set appropriate MIME type
+    const ext = path.extname(absolutePath).toLowerCase();
+    let contentType = 'application/octet-stream'; // Default
+    
+    // Comprehensive MIME type mapping
+    const mimeTypes = {
+      '.html': 'text/html',
+      '.htm': 'text/html',
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.json': 'application/json',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.ogg': 'video/ogg',
+      '.ogv': 'video/ogg',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.pdf': 'application/pdf',
+      '.xml': 'application/xml',
+      '.zip': 'application/zip',
+      '.ico': 'image/x-icon',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf',
+      '.eot': 'application/vnd.ms-fontobject',
+      '.otf': 'font/otf',
+      '.swf': 'application/x-shockwave-flash',
+      '.flv': 'video/x-flv',
+      '.f4v': 'video/mp4',
+      '.m4v': 'video/mp4',
+      '.xap': 'application/x-silverlight-app',
+      '.tincan': 'application/json',
+      '.txt': 'text/plain',
+    };
+
+    if (mimeTypes[ext]) {
+      contentType = mimeTypes[ext];
+    }
+    
+    // Special handling for Articulate Storyline content
+    const isStoryContent = absolutePath.includes('story_content') || 
+                          absolutePath.includes('mobile') || 
+                          absolutePath.endsWith('story.html') || 
+                          absolutePath.endsWith('story_html5.html');
+                          
+    const isHTML5Content = absolutePath.includes('html5') || contentType === 'text/html';
+    
+    console.log(`[ContentType] ${absolutePath} -> ${contentType} (isStoryContent: ${isStoryContent}, isHTML5: ${isHTML5Content})`);
+    
+    // Handle video files and range requests (streaming support)
+    const isVideo = /\.(mp4|webm|ogv|mov|m4v|f4v|flv)$/i.test(absolutePath);
+    const isAudio = /\.(mp3|wav|ogg)$/i.test(absolutePath);
+    const isMediaFile = isVideo || isAudio;
+    
+    if (isMediaFile) {
+      console.log(`[Media] Processing media file: ${absolutePath}`);
+      
+      // Video files need special handling for streaming (range requests)
+      const range = req.headers.range;
+      
+      // Set special headers for Articulate media
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', contentType);
+      
+      // If no range request, send entire file
+      if (!range) {
+        console.log(`[Media] Serving complete file (no range request): ${absolutePath}`);
+        res.setHeader('Content-Length', stats.size);
         
-        // Determine course type
-        let type = 'Unknown';
-        if (fs.existsSync(path.join(courseDir, 'tincan.xml'))) {
-          type = 'xAPI';
-        } else if (fs.existsSync(path.join(courseDir, 'imsmanifest.xml'))) {
-          type = 'SCORM';
-        } else if (fs.existsSync(path.join(courseDir, 'cmi5.xml'))) {
-          type = 'cmi5';
+        // Add custom headers for Articulate player
+        if (isStoryContent) {
+          res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day cache for media
         }
         
-        return {
-          id: courseId,
-          type: type,
-          launchUrl: `/launch/${courseId}`
-        };
+        // Stream the file
+        const readStream = fs.createReadStream(absolutePath);
+        readStream.on('error', (err) => {
+          console.error(`[Error] Error streaming file: ${err.message}`);
+          if (!res.headersSent) {
+            res.status(500).send('Error streaming file');
+          }
+        });
+        return readStream.pipe(res);
+      }
+      
+      // Parse range request
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+      
+      // Validate range request
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= stats.size || start > end) {
+        console.error(`[Error] Invalid range request: ${range} for file size ${stats.size}`);
+        res.setHeader('Content-Range', `bytes */${stats.size}`);
+        return res.status(416).send('Range Not Satisfiable');
+      }
+      
+      const chunkSize = end - start + 1;
+      console.log(`[Media] Range request: ${start}-${end}/${stats.size} (${chunkSize} bytes)`);
+      
+      // Set response headers for range request
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${stats.size}`);
+      res.setHeader('Content-Length', chunkSize);
+      
+      // Add custom headers for Articulate player if needed
+      if (isStoryContent) {
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day cache for media
+      }
+      
+      // Stream the chunk
+      const readStream = fs.createReadStream(absolutePath, { start, end });
+      readStream.on('error', (err) => {
+        console.error(`[Error] Error streaming file chunk: ${err.message}`);
+        if (!res.headersSent) {
+          res.status(500).send('Error streaming file');
+        }
       });
+      return readStream.pipe(res);
+    }
     
-    res.json(courses);
-  } catch (error) {
-    console.error('Error listing courses:', error);
-    res.status(500).json({ error: 'Failed to list courses' });
+    // For non-media files, serve directly
+    console.log(`[Serving] Regular file: ${absolutePath}`);
+    
+    // Set response headers
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    
+    // Add caching for static assets
+    if (ext.match(/\.(css|js|jpg|jpeg|png|gif|webp|ico|woff|woff2|ttf|eot|otf)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day cache
+    }
+    
+    // Additional headers for Articulate content
+    if (isStoryContent) {
+      // HTML5 content may need specific headers
+      if (isHTML5Content) {
+        res.setHeader('Cache-Control', 'no-cache'); // Don't cache HTML
+      }
+    }
+    
+    // Stream the file
+    const readStream = fs.createReadStream(absolutePath);
+    readStream.on('error', (err) => {
+      console.error(`[Error] Error streaming file: ${err.message}`);
+      if (!res.headersSent) {
+        res.status(500).send('Error streaming file');
+      }
+    });
+    return readStream.pipe(res);
+  } catch (err) {
+    console.error(`[Error] Unhandled error serving course content: ${err.message}`);
+    res.status(500).send('Server error');
   }
 });
 
