@@ -17,20 +17,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Current course data (for launch section)
     let currentCourse = null;
     
-    // Check if we're on Vercel
-    const isVercel = window.location.hostname.includes('vercel.app');
-    
-    // Add a banner for Vercel deployment
-    if (isVercel) {
-        const banner = document.createElement('div');
-        banner.className = 'vercel-banner';
-        banner.innerHTML = `
-            <p><strong>Note:</strong> This is a demo deployed on Vercel. File uploads will be simulated since Vercel 
-            doesn't support persistent file storage. For a fully functional version, deploy to a server with file storage capabilities.</p>
-        `;
-        document.querySelector('.container').prepend(banner);
-    }
-    
     // Load existing courses on page load
     loadExistingCourses();
     
@@ -49,119 +35,66 @@ document.addEventListener('DOMContentLoaded', function() {
     courseUploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        const courseId = document.getElementById('courseId').value.trim() || 
-                        (courseFileInput.files.length ? courseFileInput.files[0].name.replace('.zip', '') : 'demo-course');
+        if (!courseFileInput.files.length) {
+            alert('Please select a course file to upload');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('courseFile', courseFileInput.files[0]);
+        
+        const courseId = document.getElementById('courseId').value.trim();
+        if (courseId) {
+            formData.append('courseId', courseId);
+        }
         
         // Show overlay while uploading
         overlay.classList.remove('hidden');
         
-        if (isVercel) {
-            // On Vercel, use a simplified approach since we can't store files
-            fetch('/api/upload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    courseId: courseId,
-                    courseType: 'SCORM'
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Hide overlay
-                overlay.classList.add('hidden');
+        // Upload the course via API
+        fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide overlay
+            overlay.classList.add('hidden');
+            
+            if (data.success) {
+                // Show success message
+                alert(`Course uploaded successfully! Course ID: ${data.courseId}`);
                 
-                if (data.success) {
-                    // Show success message with Vercel note
-                    alert(`Demo course created with ID: ${data.courseId}. Note: This is a demo on Vercel where files cannot be persistently stored.`);
-                    
-                    // Reset form
-                    courseUploadForm.reset();
-                    fileNameDisplay.textContent = 'No file chosen';
-                    
-                    // Reload courses list
-                    loadExistingCourses();
-                    
-                    // Show launch section with course info
-                    currentCourse = {
-                        id: data.courseId,
-                        type: data.type,
-                        launchUrl: data.launchUrl
-                    };
-                    
-                    displayCourseInfo(currentCourse);
-                } else {
-                    alert(`Error: ${data.error}`);
-                }
-            })
-            .catch(error => {
-                // Hide overlay
-                overlay.classList.add('hidden');
+                // Reset form
+                courseUploadForm.reset();
+                fileNameDisplay.textContent = 'No file chosen';
                 
-                console.error('Error:', error);
-                alert('An error occurred. Please try again.');
-            });
-        } else {
-            // Regular flow for non-Vercel environments
-            if (!courseFileInput.files.length) {
-                alert('Please select a course file to upload');
-                overlay.classList.add('hidden');
-                return;
+                // Reload courses list
+                loadExistingCourses();
+                
+                // Show launch section with course info
+                currentCourse = {
+                    id: data.courseId,
+                    type: data.type,
+                    launchUrl: data.launchUrl
+                };
+                
+                displayCourseInfo(currentCourse);
+            } else {
+                alert(`Error: ${data.error}`);
             }
+        })
+        .catch(error => {
+            // Hide overlay
+            overlay.classList.add('hidden');
             
-            const formData = new FormData();
-            formData.append('courseFile', courseFileInput.files[0]);
-            
-            if (courseId) {
-                formData.append('courseId', courseId);
-            }
-            
-            // Upload the course via API
-            fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Hide overlay
-                overlay.classList.add('hidden');
-                
-                if (data.success) {
-                    // Show success message
-                    alert(`Course uploaded successfully! Course ID: ${data.courseId}`);
-                    
-                    // Reset form
-                    courseUploadForm.reset();
-                    fileNameDisplay.textContent = 'No file chosen';
-                    
-                    // Reload courses list
-                    loadExistingCourses();
-                    
-                    // Show launch section with course info
-                    currentCourse = {
-                        id: data.courseId,
-                        type: data.type,
-                        launchUrl: data.launchUrl
-                    };
-                    
-                    displayCourseInfo(currentCourse);
-                } else {
-                    alert(`Error: ${data.error}`);
-                }
-            })
-            .catch(error => {
-                // Hide overlay
-                overlay.classList.add('hidden');
-                
-                console.error('Error:', error);
-                alert('An error occurred while uploading the course. Please try again.');
-            });
-        }
+            console.error('Error:', error);
+            alert('An error occurred while uploading the course. Please try again.');
+        });
     });
     
     // --- Launch button click handler ---
-    // Opens the course in a new window
+    // Opens the course in a new window and removes any popup remnants
     launchBtn.addEventListener('click', function() {
         if (currentCourse) {
             window.open(currentCourse.launchUrl, '_blank', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
